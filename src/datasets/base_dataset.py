@@ -21,22 +21,22 @@ class AudioAugmentor:
     def __call__(self, audio: torch.Tensor):
         """Apply augmentations sequentially"""
         try:
-            original_audio = audio.clone()
+            # original_audio = audio.clone()
 
             # Log initial stats
-            print("\nAugmentation Stats:")
-            print(f"Original audio range: [{audio.min():.3f}, {audio.max():.3f}]")
+            # print("\nAugmentation Stats:")
+            # print(f"Original audio range: [{audio.min():.3f}, {audio.max():.3f}]")
 
             # Apply and log noise
             audio = self.add_noise(audio)
-            print(f"After noise: [{audio.min():.3f}, {audio.max():.3f}]")
+            # print(f"After noise: [{audio.min():.3f}, {audio.max():.3f}]")
 
             # Apply and log gain
             audio = self.gain_augment(audio)
-            print(f"After gain: [{audio.min():.3f}, {audio.max():.3f}]")
+            # print(f"After gain: [{audio.min():.3f}, {audio.max():.3f}]")
 
-            changed = not torch.allclose(original_audio, audio)
-            print(f"Audio was modified: {changed}")
+            # changed = not torch.allclose(original_audio, audio)
+            # print(f"Audio was modified: {changed}")
 
             return audio
         except Exception as e:
