@@ -52,6 +52,15 @@ def plot_spectrogram(spectrogram, name=None):
     Returns:
         image (Image): image of the spectrogram
     """
+
+    ##############################################################################
+    # Если спектрограмма имеет размерность (1, 128, N), то убираем первое измерение
+    if spectrogram.ndimension() == 3 and spectrogram.shape[0] == 1:
+        spectrogram = spectrogram[
+            0
+        ]  # Убираем первое измерение, получаем размерность (128, N)
+    ##############################################################################
+
     plt.figure(figsize=(20, 5))
     plt.pcolormesh(spectrogram)
     plt.title(name)

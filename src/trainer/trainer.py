@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import torch
 
 from src.logger.utils import plot_spectrogram
 from src.metrics.tracker import MetricTracker
@@ -15,51 +16,108 @@ class Trainer(BaseTrainer):
 
     def process_batch(self, batch, metrics: MetricTracker):
         """
-        Run batch through the model, compute metrics, compute loss,
-        and do training step (during training stage).
-
-        The function expects that criterion aggregates all losses
-        (if there are many) into a single one defined in the 'loss' key.
-
-        Args:
-            batch (dict): dict-based batch containing the data from
-                the dataloader.
-            metrics (MetricTracker): MetricTracker object that computes
-                and aggregates the metrics. The metrics depend on the type of
-                the partition (train or inference).
-        Returns:
-            batch (dict): dict-based batch containing the data from
-                the dataloader (possibly transformed via batch transform),
-                model outputs, and losses.
+        Process batch with memory optimizations and mixed precision training.
         """
-        batch = self.move_batch_to_device(batch)
-        batch = self.transform_batch(batch)  # transform batch on device -- faster
+        try:
+            # Initialize gradient scaler for mixed precision training
+            if not hasattr(self, "scaler"):
+                self.scaler = torch.cuda.amp.GradScaler()
 
-        metric_funcs = self.metrics["inference"]
-        if self.is_train:
-            metric_funcs = self.metrics["train"]
-            self.optimizer.zero_grad()
+            # Move batch to device efficiently
+            batch = self.move_batch_to_device(batch)
 
-        outputs = self.model(**batch)
-        batch.update(outputs)
+            # Transform batch with memory optimization
+            torch.cuda.empty_cache()  # Clear cache before processing
+            batch = self.transform_batch(batch)
 
-        all_losses = self.criterion(**batch)
-        batch.update(all_losses)
+            metric_funcs = self.metrics["inference"]
+            if self.is_train:
+                metric_funcs = self.metrics["train"]
+                self.optimizer.zero_grad(
+                    set_to_none=True
+                )  # More efficient than zero_grad()
 
-        if self.is_train:
-            batch["loss"].backward()  # sum of all losses is always called loss
-            self._clip_grad_norm()
-            self.optimizer.step()
-            if self.lr_scheduler is not None:
-                self.lr_scheduler.step()
+            # Use mixed precision for forward pass
+            with torch.cuda.amp.autocast():
+                outputs = self.model(**batch)
+                batch.update(outputs)
+                all_losses = self.criterion(**batch)
+                batch.update(all_losses)
 
-        # update metrics for each loss (in case of multiple losses)
-        for loss_name in self.config.writer.loss_names:
-            metrics.update(loss_name, batch[loss_name].item())
+            if self.is_train:
+                # Use gradient scaling for mixed precision training
+                self.scaler.scale(batch["loss"]).backward()
 
-        for met in metric_funcs:
-            metrics.update(met.name, met(**batch))
-        return batch
+                # Gradient clipping with scaled gradients
+                if hasattr(self, "clip_grad_norm"):
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), max_norm=1.0
+                    )
+
+                # Optimizer step with gradient scaling
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+
+                if self.lr_scheduler is not None:
+                    self.lr_scheduler.step()
+
+            # Update metrics efficiently
+            with torch.no_grad():
+                for loss_name in self.config.writer.loss_names:
+                    metrics.update(loss_name, batch[loss_name].item())
+
+                for met in metric_funcs:
+                    metrics.update(met.name, met(**batch))
+
+            return batch
+
+        except RuntimeError as e:
+            if "out of memory" in str(e):
+                torch.cuda.empty_cache()
+                print("\nOOM in batch processing. Batch sizes:")
+                for k, v in batch.items():
+                    if isinstance(v, torch.Tensor):
+                        print(f"{k}: {v.shape}")
+                raise RuntimeError("OOM in batch processing")
+            raise e
+
+    def move_batch_to_device(self, batch):
+        """
+        Efficiently move batch to device with memory optimization
+        """
+        device = next(self.model.parameters()).device
+        processed_batch = {}
+
+        for key, value in batch.items():
+            if isinstance(value, torch.Tensor):
+                # Move tensor to device and convert to half precision if possible
+                if value.dtype == torch.float32:
+                    processed_batch[key] = value.to(device, non_blocking=True)
+                else:
+                    processed_batch[key] = value.to(device)
+            else:
+                processed_batch[key] = value
+
+        return processed_batch
+
+    def enable_memory_optimizations(self):
+        """
+        Enable various memory optimizations for the model
+        """
+        # Enable gradient checkpointing if available
+        if hasattr(self.model, "encoder"):
+            self.model.encoder.gradient_checkpointing_enable()
+
+        # Enable efficient memory usage for backward pass
+        torch.backends.cudnn.benchmark = True
+
+        # Set up gradient clipping
+        self.clip_grad_norm = True
+
+        # Optional: Use parameter sharing if applicable
+        if hasattr(self.model, "decoder") and hasattr(self.model, "embedding"):
+            self.model.decoder.weight = self.model.embedding.weight
 
     def _log_batch(self, batch_idx, batch, mode="train"):
         """
@@ -84,6 +142,16 @@ class Trainer(BaseTrainer):
             self.log_spectrogram(**batch)
             self.log_predictions(**batch)
 
+        # DEBUG
+        if "original_spectrogram" in batch:
+            self.writer.add_image(
+                "original_spectrogram", batch["original_spectrogram"][0]
+            )
+
+        # Log augmented versions
+        if "spectrogram" in batch:
+            self.writer.add_image("augmented_spectrogram", batch["spectrogram"][0])
+
     def log_spectrogram(self, spectrogram, **batch):
         spectrogram_for_plot = spectrogram[0].detach().cpu()
         image = plot_spectrogram(spectrogram_for_plot)
@@ -99,7 +167,11 @@ class Trainer(BaseTrainer):
         argmax_inds = log_probs.cpu().argmax(-1).numpy()
         argmax_inds = [
             inds[: int(ind_len)]
-            for inds, ind_len in zip(argmax_inds, log_probs_length.numpy())
+            # for inds, ind_len in zip(argmax_inds, log_probs_length.numpy())
+            ##################################################################
+            #
+            for inds, ind_len in zip(argmax_inds, log_probs_length.cpu().numpy())
+            ##################################################################
         ]
         argmax_texts_raw = [self.text_encoder.decode(inds) for inds in argmax_inds]
         argmax_texts = [self.text_encoder.ctc_decode(inds) for inds in argmax_inds]

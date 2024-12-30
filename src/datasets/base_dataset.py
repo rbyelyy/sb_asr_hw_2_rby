@@ -11,6 +11,71 @@ from src.text_encoder import CTCTextEncoder
 logger = logging.getLogger(__name__)
 
 
+class AudioAugmentor:
+    def __init__(self, p=0.5, target_sr=16000):  # Added target_sr parameter
+        self.p = p
+        self.target_sr = (
+            target_sr  # Store it even though we don't use it in simple augmentations
+        )
+
+    def __call__(self, audio: torch.Tensor):
+        """Apply augmentations sequentially"""
+        try:
+            original_audio = audio.clone()
+
+            # Log initial stats
+            print("\nAugmentation Stats:")
+            print(f"Original audio range: [{audio.min():.3f}, {audio.max():.3f}]")
+
+            # Apply and log noise
+            audio = self.add_noise(audio)
+            print(f"After noise: [{audio.min():.3f}, {audio.max():.3f}]")
+
+            # Apply and log gain
+            audio = self.gain_augment(audio)
+            print(f"After gain: [{audio.min():.3f}, {audio.max():.3f}]")
+
+            changed = not torch.allclose(original_audio, audio)
+            print(f"Audio was modified: {changed}")
+
+            return audio
+        except Exception as e:
+            print(f"Error in audio augmentation: {str(e)}")
+            return audio
+
+    def add_noise(self, audio: torch.Tensor, snr_range=(15, 30)):
+        """Simple Gaussian noise augmentation"""
+        if random.random() > self.p:
+            return audio
+
+        snr = random.uniform(*snr_range)
+        noise = torch.randn_like(audio)
+        signal_power = audio.norm(p=2)
+        noise_power = noise.norm(p=2)
+        scale = signal_power / (noise_power * (10 ** (snr / 20)))
+
+        return audio + scale * noise
+
+    def gain_augment(self, audio: torch.Tensor, gain_range=(-7, 7)):
+        """Simple gain/volume augmentation"""
+        if random.random() > self.p:
+            return audio
+
+        gain = random.uniform(*gain_range)
+        return audio * (10 ** (gain / 20))
+
+    # def __call__(self, audio: torch.Tensor):
+    #     """Apply augmentations sequentially"""
+    #     try:
+    #         # Apply simple augmentations that maintain dimensions
+    #         audio = self.add_noise(audio)
+    #         audio = self.gain_augment(audio)
+    #         return audio
+    #     except Exception as e:
+    #         print(f"Error in audio augmentation: {str(e)}")
+    #         return audio
+
+
 class BaseDataset(Dataset):
     """
     Base class for the datasets.
@@ -30,6 +95,7 @@ class BaseDataset(Dataset):
         max_text_length=None,
         shuffle_index=False,
         instance_transforms=None,
+        apply_augmentation=True,
     ):
         """
         Args:
@@ -63,27 +129,33 @@ class BaseDataset(Dataset):
         self.target_sr = target_sr
         self.instance_transforms = instance_transforms
 
+        # Initialize augmentor here if augmentation is enabled
+        self.augmentor = (
+            AudioAugmentor(
+                p=0.5,
+                target_sr=target_sr,  # Pass only the parameters the AudioAugmentor expects
+            )
+            if apply_augmentation
+            else None
+        )
+
+        self.apply_augmentation = apply_augmentation
+
     def __getitem__(self, ind):
-        """
-        Get element from the index, preprocess it, and combine it
-        into a dict.
-
-        Notice that the choice of key names is defined by the template user.
-        However, they should be consistent across dataset getitem, collate_fn,
-        loss_function forward method, and model forward method.
-
-        Args:
-            ind (int): index in the self.index list.
-        Returns:
-            instance_data (dict): dict, containing instance
-                (a single dataset element).
-        """
         data_dict = self._index[ind]
         audio_path = data_dict["path"]
         audio = self.load_audio(audio_path)
         text = data_dict["text"]
         text_encoded = self.text_encoder.encode(text)
 
+        # Apply simple augmentations
+        if self.apply_augmentation and self.augmentor is not None:
+            try:
+                audio = self.augmentor(audio)
+            except Exception as e:
+                print(f"Augmentation failed: {str(e)}")
+
+        # Calculate spectrogram
         spectrogram = self.get_spectrogram(audio)
 
         instance_data = {
@@ -94,11 +166,7 @@ class BaseDataset(Dataset):
             "audio_path": audio_path,
         }
 
-        # TODO think of how to apply wave augs before calculating spectrogram
-        # Note: you may want to preserve both audio in time domain and
-        # in time-frequency domain for logging
         instance_data = self.preprocess_data(instance_data)
-
         return instance_data
 
     def __len__(self):
@@ -142,12 +210,20 @@ class BaseDataset(Dataset):
                 instance transform).
         """
         if self.instance_transforms is not None:
-            for transform_name in self.instance_transforms.keys():
+            for transform_name, transform in self.instance_transforms.items():
                 if transform_name == "get_spectrogram":
-                    continue  # skip special key
-                instance_data[transform_name] = self.instance_transforms[
-                    transform_name
-                ](instance_data[transform_name])
+                    continue  # Skip special key
+
+                # Apply transforms to both original and augmented versions if they exist
+                if transform_name in instance_data:
+                    instance_data[transform_name] = transform(
+                        instance_data[transform_name]
+                    )
+                if f"original_{transform_name}" in instance_data:
+                    instance_data[f"original_{transform_name}"] = transform(
+                        instance_data[f"original_{transform_name}"]
+                    )
+
         return instance_data
 
     @staticmethod

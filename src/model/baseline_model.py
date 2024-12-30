@@ -1,45 +1,48 @@
 from torch import nn
-from torch.nn import Sequential
 
 
 class BaselineModel(nn.Module):
-    """
-    Simple MLP
-    """
-
-    def __init__(self, n_feats, n_tokens, fc_hidden=512):
-        """
-        Args:
-            n_feats (int): number of input features.
-            n_tokens (int): number of tokens in the vocabulary.
-            fc_hidden (int): number of hidden features.
-        """
+    def __init__(self, n_feats=128, n_tokens=28, fc_hidden=512):
         super().__init__()
-
-        self.net = Sequential(
-            # people say it can approximate any function...
-            nn.Linear(in_features=n_feats, out_features=fc_hidden),
+        self.conv = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
-            nn.Linear(in_features=fc_hidden, out_features=fc_hidden),
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
-            nn.Linear(in_features=fc_hidden, out_features=n_tokens),
         )
 
-    def forward(self, spectrogram, spectrogram_length, **batch):
-        """
-        Model forward method.
+        self.lstm = nn.LSTM(
+            input_size=64 * n_feats,  # 64 channels * 128 freq bins
+            hidden_size=fc_hidden,
+            num_layers=2,
+            bidirectional=True,
+            batch_first=True,
+        )
+        self.fc = nn.Linear(fc_hidden * 2, n_tokens)
+        nn.init.kaiming_normal_(self.fc.weight)
+        self.fc.bias.data.fill_(-1.0)  # Slight bias against blank token
 
-        Args:
-            spectrogram (Tensor): input spectrogram.
-            spectrogram_length (Tensor): spectrogram original lengths.
-        Returns:
-            output (dict): output dict containing log_probs and
-                transformed lengths.
-        """
-        output = self.net(spectrogram.transpose(1, 2))
-        log_probs = nn.functional.log_softmax(output, dim=-1)
-        log_probs_length = self.transform_input_lengths(spectrogram_length)
-        return {"log_probs": log_probs, "log_probs_length": log_probs_length}
+    def forward(self, spectrogram, spectrogram_length, **batch):
+        # Input shape: [B, 1, 128, T]
+        x = self.conv(spectrogram)  # Output: [B, 64, 128, T]
+
+        batch_size = x.size(0)
+        time_steps = x.size(-1)
+
+        # Reshape to [B, T, 64*128]
+        x = x.permute(0, 3, 1, 2).contiguous()
+        x = x.view(batch_size, time_steps, -1)
+
+        # Pack sequence
+        packed_x = nn.utils.rnn.pack_padded_sequence(
+            x, spectrogram_length.cpu(), batch_first=True, enforce_sorted=False
+        )
+
+        x, _ = self.lstm(packed_x)
+        x, _ = nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
+
+        log_probs = nn.functional.log_softmax(self.fc(x), dim=-1)
+        return {"log_probs": log_probs, "log_probs_length": spectrogram_length}
 
     def transform_input_lengths(self, input_lengths):
         """

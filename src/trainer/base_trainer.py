@@ -188,6 +188,7 @@ class BaseTrainer:
 
             if stop_process:  # early_stop
                 break
+            # break # TODO 1 epoch
 
     def _train_epoch(self, epoch):
         """
@@ -242,6 +243,7 @@ class BaseTrainer:
                 self.train_metrics.reset()
             if batch_idx + 1 >= self.epoch_len:
                 break
+            # break # TODO train 1 batch
 
         logs = last_train_metrics
 

@@ -10,9 +10,7 @@
 
 ## About
 
-This repository contains a template for solving ASR task with PyTorch. This template branch is a part of the [HSE DLA course](https://github.com/markovka17/dla) ASR homework. Some parts of the code are missing (or do not follow the most optimal design choices...) and students are required to fill these parts themselves (as well as writing their own models, etc.).
-
-See the task assignment [here](https://github.com/markovka17/dla/tree/2024/hw1_asr).
+This repository contains a code for solving ASR task with PyTorch.
 
 ## Installation
 
@@ -62,7 +60,8 @@ To train a model, run the following command:
 python3 train.py -cn=CONFIG_NAME HYDRA_CONFIG_ARGUMENTS
 ```
 
-Where `CONFIG_NAME` is a config from `src/configs` and `HYDRA_CONFIG_ARGUMENTS` are optional arguments.
+Where `CONFIG_NAME` is a config from `src/configs`  - in our case it should be baseline.yaml
+- `HYDRA_CONFIG_ARGUMENTS` are optional arguments.
 
 To run inference (evaluate the model or save predictions):
 
@@ -70,10 +69,8 @@ To run inference (evaluate the model or save predictions):
 python3 inference.py HYDRA_CONFIG_ARGUMENTS
 ```
 
-## Credits
+## Results
 
-This repository is based on a [PyTorch Project Template](https://github.com/Blinorot/pytorch_project_template).
-
-## License
-
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](/LICENSE)
+ - model was trained with 50 epochs (up-to-date configurations is in baseline.yaml )
+ - metrics for training was saved via wandb - link (https://wandb.ai/hse_rbyelyy/pytorch_template_asr_example/runs/42uh8hwr?nw=nwuserrbyelyy)
+ - model weights can be taken from saved folder (model_best.pth)
