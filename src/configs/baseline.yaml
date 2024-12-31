@@ -2,7 +2,7 @@ defaults:
   - model: baseline
   - writer: wandb
   - metrics: example
-  - datasets: simple_test #example onebatchtest simple_test
+  - datasets: onebatchtest #example onebatchtest simple_test
   - dataloader: example
   - transforms: example_only_instance
   - _self_
@@ -22,7 +22,7 @@ text_encoder:
   _target_: src.text_encoder.CTCTextEncoder
 trainer:
   log_step: 50 #50
-  n_epochs: 50 #50
+  n_epochs: 2 #50
   epoch_len: 200 # 200
   device_tensors: ["spectrogram", "text_encoded"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
