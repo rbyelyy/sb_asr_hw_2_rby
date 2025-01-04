@@ -13,3 +13,8 @@ inferencer:
   from_pretrained: "saved/testing/model_best.pth" # path to the pretrained model saved/testing/model_best.pth
 text_encoder:
   _target_: src.text_encoder.CTCTextEncoder
+  use_bpe: false
+  lm_path: "src/model/lm/librispeech.binary"
+  beam_width: 100
+  lm_weight: 0.1
+  length_penalty: 0.3

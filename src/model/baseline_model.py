@@ -17,10 +17,11 @@ class BaselineModel(nn.Module):
             num_layers=2,
             bidirectional=True,
             batch_first=True,
+            dropout=0.2,
         )
         self.fc = nn.Linear(fc_hidden * 2, n_tokens)
         nn.init.kaiming_normal_(self.fc.weight)
-        self.fc.bias.data.fill_(-1.0)  # Slight bias against blank token
+        self.fc.bias.data.fill_(-1.0)  # bias against blank token
 
     def forward(self, spectrogram, spectrogram_length, **batch):
         # Input shape: [B, 1, 128, T]

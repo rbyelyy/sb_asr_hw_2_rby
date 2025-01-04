@@ -17,3 +17,4 @@ pre-commit
 
 wget
 Levenshtein
+kenlm @ https://github.com/kpu/kenlm/archive/master.zip

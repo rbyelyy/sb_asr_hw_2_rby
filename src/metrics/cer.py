@@ -25,9 +25,6 @@ class ArgmaxCERMetric(BaseMetric):
         predictions = log_probs.cpu()
         lengths = log_probs_length.cpu()
 
-        # Optional: Add probability distribution logging for debugging
-        # self._log_probability_distribution(predictions[0])
-
         # Get argmax predictions
         predictions = torch.argmax(predictions, dim=-1).numpy()
 
@@ -46,9 +43,6 @@ class ArgmaxCERMetric(BaseMetric):
             # Calculate CER
             current_cer = calc_cer(target_text, pred_text)
             cers.append(current_cer)
-
-            # Optional: Log example predictions for debugging
-            # self._log_example(target_text, pred_text, current_cer)
 
         return sum(cers) / len(cers)
 

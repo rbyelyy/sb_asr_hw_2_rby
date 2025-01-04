@@ -9,10 +9,10 @@ val:
   part: "dev-clean"
   max_audio_length: 20.0
   max_text_length: 200
-  limit: 50
+  limit: 100
   instance_transforms: ${transforms.instance_transforms.inference}
 test:
   _target_: src.datasets.LibrispeechDataset
   part: "test-clean"
-  limit: 50
+  limit: 100
   instance_transforms: ${transforms.instance_transforms.inference}

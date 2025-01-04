@@ -6,11 +6,6 @@ from torch import Tensor
 from src.metrics.base_metric import BaseMetric
 from src.metrics.utils import calc_wer
 
-# TODO beam search / LM versions
-# Note: they can be written in a pretty way
-# Note 2: overall metric design can be significantly improved
-# I have added BPE support but decided to avoid changing class name
-
 
 class ArgmaxWERMetric(BaseMetric):
     def __init__(self, text_encoder, *args, **kwargs):

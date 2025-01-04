@@ -1,4 +1,3 @@
-import logging
 import random
 
 import numpy as np
@@ -6,9 +5,8 @@ import torch
 import torchaudio
 from torch.utils.data import Dataset
 
+import logger
 from src.text_encoder import CTCTextEncoder
-
-logger = logging.getLogger(__name__)
 
 
 class AudioAugmentor:
@@ -21,22 +19,11 @@ class AudioAugmentor:
     def __call__(self, audio: torch.Tensor):
         """Apply augmentations sequentially"""
         try:
-            # original_audio = audio.clone()
-
-            # Log initial stats
-            # print("\nAugmentation Stats:")
-            # print(f"Original audio range: [{audio.min():.3f}, {audio.max():.3f}]")
-
             # Apply and log noise
             audio = self.add_noise(audio)
-            # print(f"After noise: [{audio.min():.3f}, {audio.max():.3f}]")
 
             # Apply and log gain
             audio = self.gain_augment(audio)
-            # print(f"After gain: [{audio.min():.3f}, {audio.max():.3f}]")
-
-            # changed = not torch.allclose(original_audio, audio)
-            # print(f"Audio was modified: {changed}")
 
             return audio
         except Exception as e:
@@ -63,17 +50,6 @@ class AudioAugmentor:
 
         gain = random.uniform(*gain_range)
         return audio * (10 ** (gain / 20))
-
-    # def __call__(self, audio: torch.Tensor):
-    #     """Apply augmentations sequentially"""
-    #     try:
-    #         # Apply simple augmentations that maintain dimensions
-    #         audio = self.add_noise(audio)
-    #         audio = self.gain_augment(audio)
-    #         return audio
-    #     except Exception as e:
-    #         print(f"Error in audio augmentation: {str(e)}")
-    #         return audio
 
 
 class BaseDataset(Dataset):
@@ -107,7 +83,6 @@ class BaseDataset(Dataset):
             limit (int | None): if not None, limit the total number of elements
                 in the dataset to 'limit' elements.
             max_audio_length (int): maximum allowed audio length.
-            max_test_length (int): maximum allowed text length.
             shuffle_index (bool): if True, shuffle the index. Uses python
                 random package with seed 42.
             instance_transforms (dict[Callable] | None): transforms that
@@ -241,7 +216,6 @@ class BaseDataset(Dataset):
                 the dataset. The dict has required metadata information,
                 such as label and object path.
             max_audio_length (int): maximum allowed audio length.
-            max_test_length (int): maximum allowed text length.
         Returns:
             index (list[dict]): list, containing dict for each element of
                 the dataset that satisfied the condition. The dict has

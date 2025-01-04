@@ -243,7 +243,6 @@ class BaseTrainer:
                 self.train_metrics.reset()
             if batch_idx + 1 >= self.epoch_len:
                 break
-            # break # TODO train 1 batch
 
         logs = last_train_metrics
 
@@ -505,6 +504,7 @@ class BaseTrainer:
         resume_path = str(resume_path)
         self.logger.info(f"Loading checkpoint: {resume_path} ...")
         checkpoint = torch.load(resume_path, self.device)
+
         self.start_epoch = checkpoint["epoch"] + 1
         self.mnt_best = checkpoint["monitor_best"]
 
@@ -551,6 +551,10 @@ class BaseTrainer:
         else:
             print(f"Loading model weights from: {pretrained_path} ...")
         checkpoint = torch.load(pretrained_path, self.device)
+
+        print("Checkpoint state_dict keys:", checkpoint["state_dict"].keys())
+        print("FC weight shape:", checkpoint["state_dict"]["fc.weight"].shape)
+        print("FC bias shape:", checkpoint["state_dict"]["fc.bias"].shape)
 
         if checkpoint.get("state_dict") is not None:
             self.model.load_state_dict(checkpoint["state_dict"])

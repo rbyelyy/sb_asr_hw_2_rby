@@ -39,6 +39,7 @@ class Trainer(BaseTrainer):
 
             # Use mixed precision for forward pass
             with torch.cuda.amp.autocast():
+                # In your trainer code, where you call the forward method:
                 outputs = self.model(**batch)
                 batch.update(outputs)
                 all_losses = self.criterion(**batch)
@@ -52,7 +53,8 @@ class Trainer(BaseTrainer):
                 if hasattr(self, "clip_grad_norm"):
                     self.scaler.unscale_(self.optimizer)
                     torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(), max_norm=1.0
+                        self.model.parameters(),
+                        max_norm=10.0,  # TODO clipping was set to 1 by default
                     )
 
                 # Optimizer step with gradient scaling
@@ -167,11 +169,7 @@ class Trainer(BaseTrainer):
         argmax_inds = log_probs.cpu().argmax(-1).numpy()
         argmax_inds = [
             inds[: int(ind_len)]
-            # for inds, ind_len in zip(argmax_inds, log_probs_length.numpy())
-            ##################################################################
-            #
             for inds, ind_len in zip(argmax_inds, log_probs_length.cpu().numpy())
-            ##################################################################
         ]
         argmax_texts_raw = [self.text_encoder.decode(inds) for inds in argmax_inds]
         argmax_texts = [self.text_encoder.ctc_decode(inds) for inds in argmax_inds]
